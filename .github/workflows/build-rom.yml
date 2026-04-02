@@ -1,0 +1,53 @@
+name: Build Custom ROM (POCO X4 Pro 5G)
+
+on:
+  workflow_dispatch: # Permite iniciar o processo manualmente clicando em um botão no GitHub!
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04 # Essa é a máquina que o GitHub vai nos emprestar
+    
+    steps:
+      - name: Checando os nossos scripts mágicos (Checkout do repositório)
+        uses: actions/checkout@v3
+
+      - name: Limpeza de espaço em disco (Opcional, mas muito útil no Github)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        
+      - name: Passo 1 - Instalando dependências e repo
+        run: |
+          chmod +x ./setup_env.sh
+          ./setup_env.sh
+        
+      - name: Passo 2 - Configurando e baixando o código fonte de 150GB+ (Sync)
+        run: |
+          # Re-fazendo configurações de e-mail temporárias
+          git config --global user.email "bot@github.com"
+          git config --global user.name "GithubActionsBot"
+          
+          mkdir -p ~/android_source
+          cd ~/android_source
+          ~/.bin/repo init -u https://github.com/LineageOS/android.git -b lineage-20.0
+          
+          # Copia nosso manifesto
+          mkdir -p .repo/local_manifests
+          cp $GITHUB_WORKSPACE/local_manifests/veux.xml .repo/local_manifests/
+          
+          # Sincroniza em nuvem a toda velocidade
+          ~/.bin/repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
+          
+      - name: Passo 3 - A Grande Compilação
+        run: |
+          cd ~/android_source
+          source build/envsetup.sh
+          lunch lineage_veux-userdebug
+          mka bacon
+          
+      - name: Passo 4 - Pegando a sua ROM Finalizada e Zipada
+        uses: actions/upload-artifact@v3
+        with:
+          name: POCOX4-ROM-VEUX
+          path: ~/android_source/out/target/product/veux/lineage-20.0-*-UNOFFICIAL-veux.zip

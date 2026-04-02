@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <!-- Device Tree for POCO X4 Pro 5G (veux) / Redmi Note 11 Pro 5G (peux) -->
+    <!-- Utilizando árvores de terceiros (comumente usadas para LineageOS e AOSP derivadas) -->
+    
+    <project path="device/xiaomi/veux" name="crdroidandroid/android_device_xiaomi_veux" remote="github" revision="13.0" />
+    
+    <!-- Vendor Blobs (Drivers proprietários necessários) -->
+    <!-- NOTA: Normalmente pegos de repos como TheMuppets ou extraídos do aparelho -->
+    <project path="vendor/xiaomi/veux" name="TheMuppets/proprietary_vendor_xiaomi" remote="github" revision="lineage-20" />
+    
+    <!-- Kernel Source (Para chipset Snapdragon 695 / SM6375) -->
+    <project path="kernel/xiaomi/sm6375" name="LineageOS/android_kernel_xiaomi_sm6375" remote="github" revision="lineage-20" />
+
+    <!-- Features adicionais requeridas no JSON (MicroG, F-Droid) -->
+    <!-- Nota: Estes exigem scripts locais adicionais para incorporar perfeitamente na ROM, mas aqui está a base de sync -->
+    <!-- Exemplo para MicroG: -->
+    <!-- <project path="vendor/microg" name="microg/android_packages_apps_GmsCore" remote="github" revision="master" /> -->
+</manifest>
