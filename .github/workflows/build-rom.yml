@@ -9,7 +9,7 @@ jobs:
     
     steps:
       - name: Checando os nossos scripts mágicos (Checkout do repositório)
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Limpeza de espaço em disco (Opcional, mas muito útil no Github)
         run: |
@@ -47,7 +47,7 @@ jobs:
           mka bacon
           
       - name: Passo 4 - Pegando a sua ROM Finalizada e Zipada
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: POCOX4-ROM-VEUX
           path: ~/android_source/out/target/product/veux/lineage-20.0-*-UNOFFICIAL-veux.zip
