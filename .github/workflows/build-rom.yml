@@ -1,53 +1,112 @@
-name: Build Custom ROM (POCO X4 Pro 5G)
+name: Build HorizonX-OS (veux)
 
 on:
-  workflow_dispatch: # Permite iniciar o processo manualmente clicando em um botão no GitHub!
+  workflow_dispatch:
+    inputs:
+      CLEAN_BUILD:
+        description: 'Fazer build limpo (make clean)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  DEVICE: veux
+  LUNCH_TARGET: lineage_veux-userdebug # Altere para o prefixo da sua ROM (ex: horizon_veux-userdebug, crdroid_veux-userdebug)
+  TARGET_COMMAND: bacon # Altere para o target da ROM (ex: bacon, otapackage, etc.)
+  USE_CCACHE: 1
+  CCACHE_DIR: /tmp/ccache
+  CCACHE_EXEC: /usr/bin/ccache
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # Essa é a máquina que o GitHub vai nos emprestar
-    
+    name: Compilar HorizonX-OS
+    runs-on: ubuntu-latest
     steps:
-      - name: Checando os nossos scripts mágicos (Checkout do repositório)
+      - name: Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: Limpeza de espaço em disco (Opcional, mas muito útil no Github)
+      - name: Liberar Espaço em Disco no Runner
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-        
-      - name: Passo 1 - Instalando dependências e repo
+          echo "==> Liberando espaço no runner..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -a -f
+          sudo apt-get clean
+          df -h
+
+      - name: Configurar Ambiente de Compilação
         run: |
-          chmod +x ./setup_env.sh
-          ./setup_env.sh
-        
-      - name: Passo 2 - Configurando e baixando o código fonte de 150GB+ (Sync)
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git git-lfs gnupg gperf imagemagick lib32readline-dev lib32z1-dev \
+            libelf-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev \
+            libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
+            squashfs-tools xsltproc zip zlib1g-dev python3 python-is-python3 openjdk-11-jdk
+          
+          # Instalar ferramenta repo
+          sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
+          sudo chmod a+rx /usr/local/bin/repo
+
+          # Configuração básica do Git
+          git config --global user.name "HorizonX-OS Builder"
+          git config --global user.email "builder@horizonx-os.local"
+          git config --global color.ui true
+
+      - name: Configurar Ccache
         run: |
-          # Re-fazendo configurações de e-mail temporárias
-          git config --global user.email "bot@github.com"
-          git config --global user.name "GithubActionsBot"
-          
-          mkdir -p ~/android_source
-          cd ~/android_source
-          ~/.bin/repo init -u https://github.com/LineageOS/android.git -b lineage-20.0
-          
-          # Copia nosso manifesto
-          mkdir -p .repo/local_manifests
-          cp $GITHUB_WORKSPACE/local_manifests/veux.xml .repo/local_manifests/
-          
-          # Sincroniza em nuvem a toda velocidade
-          ~/.bin/repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
-          
-      - name: Passo 3 - A Grande Compilação
+          mkdir -p /tmp/ccache
+          ccache -M 30G
+          ccache -z
+
+      - name: Inicializar e Sincronizar Manifesto da ROM
         run: |
-          cd ~/android_source
+          mkdir -p ~/rom
+          cd ~/rom
+          
+          # Substitua pela URL do manifesto base do HorizonX-OS
+          repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --git-lfs
+          
+          # Se tiver um arquivo de local_manifests no seu repositório:
+          if [ -d "$GITHUB_WORKSPACE/.repo/local_manifests" ]; then
+            mkdir -p .repo/local_manifests
+            cp -r $GITHUB_WORKSPACE/.repo/local_manifests/* .repo/local_manifests/
+          fi
+          
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
+
+      - name: Clonar Trees do POCO X4 Pro 5G (veux)
+        run: |
+          cd ~/rom
+          # Ajuste os links abaixo com as branches e repositórios oficiais/mantidos por você
+          git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
+          git clone --depth=1 https://github.com/TheMuppets/proprietary_vendor_xiaomi_veux.git -b lineage-21 vendor/xiaomi/veux
+          git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_sm6375.git -b lineage-21 kernel/xiaomi/sm6375
+
+      - name: Compilar ROM
+        run: |
+          cd ~/rom
           source build/envsetup.sh
-          lunch lineage_veux-userdebug
-          mka bacon
+          lunch ${{ env.LUNCH_TARGET }}
           
-      - name: Passo 4 - Pegando a sua ROM Finalizada e Zipada
+          if [ "${{ inputs.CLEAN_BUILD }}" = "true" ]; then
+            make clean
+          fi
+          
+          m ${{ env.TARGET_COMMAND }} -j$(nproc --all)
+
+      - name: Estatísticas do Ccache
+        if: always()
+        run: |
+          ccache -s
+
+      - name: Fazer Upload do Pacote Gerado (.zip)
         uses: actions/upload-artifact@v4
+        if: success()
         with:
-          name: POCOX4-ROM-VEUX
-          path: ~/android_source/out/target/product/veux/lineage-20.0-*-UNOFFICIAL-veux.zip
+          name: HorizonX-OS-${{ env.DEVICE }}-build
+          path: ~/rom/out/target/product/${{ env.DEVICE }}/*.zip
+          retention-days: 7
