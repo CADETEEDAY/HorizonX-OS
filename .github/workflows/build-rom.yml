@@ -23,11 +23,10 @@ jobs:
         run: |
           Write-Host "==> Conectando ao WSL para iniciar o build da ROM..."
 
-          # Script que roda diretamente dentro do Linux (WSL) no seu SSD
           $wslScript = @'
           set -e
 
-          echo "==> 1. Atualizando pacotes e dependências de compilação..."
+          echo "==> 1. Atualizando pacotes e dependencias de compilacao..."
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
@@ -40,33 +39,33 @@ jobs:
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 2>/dev/null || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/dev/null || true
 
-          # Instalar a ferramenta repo
+          # Instalar a ferramenta repo se nao existir
           if ! command -v repo &> /dev/null; then
             sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
             sudo chmod a+rx /usr/local/bin/repo
           fi
 
-          # Configurações do Git
+          # Configuracoes do Git
           git config --global user.name "CADETEEDAY"
           git config --global user.email "builder@horizonx-os.local"
           git config --global color.ui true
 
-          # Configurar Ccache para acelerar os próximos builds
+          # Configurar Ccache
           export USE_CCACHE=1
           export CCACHE_DIR=~/.ccache
           export CCACHE_EXEC=$(which ccache)
           mkdir -p ~/.ccache
           ccache -M 30G
 
-          # Criar pasta na partição nativa do Linux (ext4)
+          # Criar pasta na particao do Linux
           mkdir -p ~/rom
           cd ~/rom
 
-          echo "==> 2. Sincronizando código-fonte da ROM..."
+          echo "==> 2. Sincronizando codigo-fonte da ROM..."
           repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --git-lfs
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
 
-          echo "==> 3. Clonando Trees do POCO X4 Pro 5G (veux)..."
+          echo "==> 3. Clonando Trees do POCO X4 Pro 5G - veux..."
           if [ ! -d "device/xiaomi/veux" ]; then
             git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
           fi
@@ -77,15 +76,15 @@ jobs:
             git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_sm6375.git -b lineage-21 kernel/xiaomi/sm6375
           fi
 
-          echo "==> 4. Iniciando a compilação..."
+          echo "==> 4. Iniciando a compilacao..."
           source build/envsetup.sh
           lunch lineage_veux-userdebug
 
           m bacon -j$(nproc --all)
 
-          echo "==> Compilação concluída com sucesso!"
+          echo "==> Compilacao concluida com sucesso!"
           ls -lh out/target/product/veux/*.zip
           '@
 
-          # Envia os comandos para execução dentro da distribuição WSL
-          wsl bash -c "$wslScript"
+          # Envia os comandos diretamente via stdin para o bash do WSL
+          $wslScript | wsl bash -s
