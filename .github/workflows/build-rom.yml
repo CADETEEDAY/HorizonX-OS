@@ -9,36 +9,25 @@ on:
         default: 'false'
         type: boolean
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-  DEVICE: veux
-  LUNCH_TARGET: lineage_veux-userdebug
-  TARGET_COMMAND: bacon
-  USE_CCACHE: 1
-  CCACHE_DIR: /tmp/ccache
-  CCACHE_EXEC: /usr/bin/ccache
-
 jobs:
   build:
     name: Compilar HorizonX-OS
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
+
     steps:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: Liberar Espaço em Disco no Runner
+      - name: Executar Compilação no Ubuntu (WSL)
+        shell: powershell
         run: |
-          echo "==> Liberando espaço em disco..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -a -f
-          sudo apt-get clean
-          df -h
+          Write-Host "==> Conectando ao WSL para iniciar o build da ROM..."
 
-      - name: Configurar Ambiente de Compilação
-        run: |
+          # Script que roda diretamente dentro do Linux (WSL) no seu SSD
+          $wslScript = @'
+          set -e
+
+          echo "==> 1. Atualizando pacotes e dependências de compilação..."
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
@@ -47,41 +36,37 @@ jobs:
             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 openjdk-11-jdk
 
-          # Links de compatibilidade para binários que buscam libncurses.so.5
+          # Retrocompatibilidade com bibliotecas legadas
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 2>/dev/null || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/dev/null || true
 
-          # Instalar ferramenta repo
-          sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
-          sudo chmod a+rx /usr/local/bin/repo
+          # Instalar a ferramenta repo
+          if ! command -v repo &> /dev/null; then
+            sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
+            sudo chmod a+rx /usr/local/bin/repo
+          fi
 
-          # Configuração do Git
-          git config --global user.name "HorizonX-OS Builder"
+          # Configurações do Git
+          git config --global user.name "CADETEEDAY"
           git config --global user.email "builder@horizonx-os.local"
           git config --global color.ui true
 
-      - name: Configurar Ccache
-        run: |
-          mkdir -p /tmp/ccache
+          # Configurar Ccache para acelerar os próximos builds
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          export CCACHE_EXEC=$(which ccache)
+          mkdir -p ~/.ccache
           ccache -M 30G
-          ccache -z
 
-      - name: Inicializar e Sincronizar Manifesto da ROM
-        run: |
+          # Criar pasta na partição nativa do Linux (ext4)
           mkdir -p ~/rom
           cd ~/rom
+
+          echo "==> 2. Sincronizando código-fonte da ROM..."
           repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --git-lfs
-          
-          if [ -d "$GITHUB_WORKSPACE/local_manifests" ]; then
-            mkdir -p .repo/local_manifests
-            cp -r $GITHUB_WORKSPACE/local_manifests/* .repo/local_manifests/
-          fi
-          
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
 
-      - name: Clonar Trees do POCO X4 Pro 5G (veux)
-        run: |
-          cd ~/rom
+          echo "==> 3. Clonando Trees do POCO X4 Pro 5G (veux)..."
           if [ ! -d "device/xiaomi/veux" ]; then
             git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
           fi
@@ -92,27 +77,15 @@ jobs:
             git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_sm6375.git -b lineage-21 kernel/xiaomi/sm6375
           fi
 
-      - name: Compilar ROM
-        run: |
-          cd ~/rom
+          echo "==> 4. Iniciando a compilação..."
           source build/envsetup.sh
-          lunch ${{ env.LUNCH_TARGET }}
-          
-          if [ "${{ inputs.CLEAN_BUILD }}" = "true" ]; then
-            make clean
-          fi
-          
-          m ${{ env.TARGET_COMMAND }} -j$(nproc --all)
+          lunch lineage_veux-userdebug
 
-      - name: Estatísticas do Ccache
-        if: always()
-        run: |
-          ccache -s
+          m bacon -j$(nproc --all)
 
-      - name: Fazer Upload do Pacote Gerado (.zip)
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: HorizonX-OS-${{ env.DEVICE }}-build
-          path: ~/rom/out/target/product/${{ env.DEVICE }}/*.zip
-          retention-days: 7
+          echo "==> Compilação concluída com sucesso!"
+          ls -lh out/target/product/veux/*.zip
+          '@
+
+          # Envia os comandos para execução dentro da distribuição WSL
+          wsl bash -c "$wslScript"
