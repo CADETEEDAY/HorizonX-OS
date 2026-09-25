@@ -12,8 +12,8 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   DEVICE: veux
-  LUNCH_TARGET: lineage_veux-userdebug # Altere para o padrão da sua ROM se necessário (ex: horizon_veux-userdebug)
-  TARGET_COMMAND: bacon # Altere para o target da ROM (ex: bacon, otapackage)
+  LUNCH_TARGET: lineage_veux-userdebug
+  TARGET_COMMAND: bacon
   USE_CCACHE: 1
   CCACHE_DIR: /tmp/ccache
   CCACHE_EXEC: /usr/bin/ccache
@@ -28,7 +28,7 @@ jobs:
 
       - name: Liberar Espaço em Disco no Runner
         run: |
-          echo "==> Liberando espaço no runner..."
+          echo "==> Liberando espaço em disco..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -47,15 +47,15 @@ jobs:
             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 openjdk-11-jdk
 
-          # Compatibilidade para ferramentas do build que buscam libncurses.so.5
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 || true
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
+          # Links de compatibilidade para binários que buscam libncurses.so.5
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 2>/dev/null || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/dev/null || true
 
           # Instalar ferramenta repo
           sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
           sudo chmod a+rx /usr/local/bin/repo
 
-          # Configuração básica do Git
+          # Configuração do Git
           git config --global user.name "HorizonX-OS Builder"
           git config --global user.email "builder@horizonx-os.local"
           git config --global color.ui true
@@ -70,11 +70,8 @@ jobs:
         run: |
           mkdir -p ~/rom
           cd ~/rom
-          
-          # Inicialização do repo (ajuste a URL se sua base não for LineageOS)
           repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --git-lfs
           
-          # Copia os manifestos locais da raiz do seu repositório se existirem
           if [ -d "$GITHUB_WORKSPACE/local_manifests" ]; then
             mkdir -p .repo/local_manifests
             cp -r $GITHUB_WORKSPACE/local_manifests/* .repo/local_manifests/
@@ -85,7 +82,6 @@ jobs:
       - name: Clonar Trees do POCO X4 Pro 5G (veux)
         run: |
           cd ~/rom
-          # Árvores do dispositivo (se já estiverem declaradas no local_manifests, comente estas linhas)
           if [ ! -d "device/xiaomi/veux" ]; then
             git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
           fi
