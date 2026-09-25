@@ -12,8 +12,8 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   DEVICE: veux
-  LUNCH_TARGET: lineage_veux-userdebug # Altere para o prefixo da sua ROM (ex: horizon_veux-userdebug, crdroid_veux-userdebug)
-  TARGET_COMMAND: bacon # Altere para o target da ROM (ex: bacon, otapackage, etc.)
+  LUNCH_TARGET: lineage_veux-userdebug # Altere para o padrão da sua ROM se necessário (ex: horizon_veux-userdebug)
+  TARGET_COMMAND: bacon # Altere para o target da ROM (ex: bacon, otapackage)
   USE_CCACHE: 1
   CCACHE_DIR: /tmp/ccache
   CCACHE_EXEC: /usr/bin/ccache
@@ -21,7 +21,7 @@ env:
 jobs:
   build:
     name: Compilar HorizonX-OS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
@@ -43,10 +43,14 @@ jobs:
           sudo apt-get install -y \
             bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
             git git-lfs gnupg gperf imagemagick lib32readline-dev lib32z1-dev \
-            libelf-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev \
-            libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
-            squashfs-tools xsltproc zip zlib1g-dev python3 python-is-python3 openjdk-11-jdk
-          
+            libelf-dev liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            python3 python-is-python3 openjdk-11-jdk
+
+          # Compatibilidade para ferramentas do build que buscam libncurses.so.5
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
+
           # Instalar ferramenta repo
           sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
           sudo chmod a+rx /usr/local/bin/repo
@@ -67,13 +71,13 @@ jobs:
           mkdir -p ~/rom
           cd ~/rom
           
-          # Substitua pela URL do manifesto base do HorizonX-OS
+          # Inicialização do repo (ajuste a URL se sua base não for LineageOS)
           repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --git-lfs
           
-          # Se tiver um arquivo de local_manifests no seu repositório:
-          if [ -d "$GITHUB_WORKSPACE/.repo/local_manifests" ]; then
+          # Copia os manifestos locais da raiz do seu repositório se existirem
+          if [ -d "$GITHUB_WORKSPACE/local_manifests" ]; then
             mkdir -p .repo/local_manifests
-            cp -r $GITHUB_WORKSPACE/.repo/local_manifests/* .repo/local_manifests/
+            cp -r $GITHUB_WORKSPACE/local_manifests/* .repo/local_manifests/
           fi
           
           repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
@@ -81,10 +85,16 @@ jobs:
       - name: Clonar Trees do POCO X4 Pro 5G (veux)
         run: |
           cd ~/rom
-          # Ajuste os links abaixo com as branches e repositórios oficiais/mantidos por você
-          git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
-          git clone --depth=1 https://github.com/TheMuppets/proprietary_vendor_xiaomi_veux.git -b lineage-21 vendor/xiaomi/veux
-          git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_sm6375.git -b lineage-21 kernel/xiaomi/sm6375
+          # Árvores do dispositivo (se já estiverem declaradas no local_manifests, comente estas linhas)
+          if [ ! -d "device/xiaomi/veux" ]; then
+            git clone --depth=1 https://github.com/LineageOS/android_device_xiaomi_veux.git -b lineage-21 device/xiaomi/veux
+          fi
+          if [ ! -d "vendor/xiaomi/veux" ]; then
+            git clone --depth=1 https://github.com/TheMuppets/proprietary_vendor_xiaomi_veux.git -b lineage-21 vendor/xiaomi/veux
+          fi
+          if [ ! -d "kernel/xiaomi/sm6375" ]; then
+            git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_sm6375.git -b lineage-21 kernel/xiaomi/sm6375
+          fi
 
       - name: Compilar ROM
         run: |
